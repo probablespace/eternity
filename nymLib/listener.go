@@ -34,13 +34,9 @@ func CheckComm() {
 			panic(err)
 		}
 
-		receivedMessage, replySURB := ParseReceived(receivedResponse)
-		if replySURB != nil {
-			panic("did not expect a replySURB!")
-		}
+		receivedMessage, _ := ParseReceived(receivedResponse)
 
 		fmt.Printf("received %v from the mix network!\n", string(receivedMessage))
-
 	}
 
 }
