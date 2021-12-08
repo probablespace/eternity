@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	nL "eternity/nymLib"
 	"fmt"
 
 	"github.com/gorilla/websocket"
@@ -18,7 +19,7 @@ func main() {
 	}
 	defer conn.Close()
 
-	selfAddress := GetSelfAddress(conn)
+	selfAddress := nL.GetSelfAddress(conn)
 	fmt.Printf("our address is: %v\n", selfAddress)
 	sendRequest, err := json.Marshal(map[string]interface{}{
 		"type":          "send",
