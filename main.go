@@ -10,8 +10,9 @@ import (
 
 func main() {
 	// nL.StartEternityServerNymClientWatcher()
-	nL.SendBinaryWithReply()
+	// nL.SendBinaryWithReply()
 
+	nL.CheckComm()
 	// initialize the server
 	// uri := "ws://localhost:1977"
 

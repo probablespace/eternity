@@ -2,7 +2,6 @@ package main
 
 import (
 	"encoding/json"
-	nL "eternity/nymLib"
 	"fmt"
 
 	"github.com/gorilla/websocket"
@@ -19,11 +18,10 @@ func main() {
 	}
 	defer conn.Close()
 
-	selfAddress := nL.GetSelfAddress(conn)
-	fmt.Printf("our address is: %v\n", selfAddress)
+	rec := "J24dDRezY2BULGEAK9zKWfDxkywvg5EyPYmVEmUJVFNH.3CHWoonozybwVUopVTwkWvobaVD5WfQdfiNoyjew9aBw@6LdVTJhRfJKsrUtnjFqE3TpEbCYs3VZoxmaoNFqRWn4x"
 	sendRequest, err := json.Marshal(map[string]interface{}{
 		"type":          "send",
-		"recipient":     selfAddress,
+		"recipient":     rec,
 		"message":       message,
 		"withReplySurb": true,
 	})
