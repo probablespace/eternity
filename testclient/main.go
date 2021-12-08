@@ -1,14 +1,15 @@
 package main
 
 import (
-	"encoding/json"
+	nL "eternity/nymLib"
 	"fmt"
+	"io/ioutil"
 
 	"github.com/gorilla/websocket"
 )
 
 func main() {
-	message := "Hello Nym!"
+	// message := "Hello Nym!"
 
 	uri := "ws://localhost:1977"
 
@@ -19,18 +20,14 @@ func main() {
 	defer conn.Close()
 
 	rec := "J24dDRezY2BULGEAK9zKWfDxkywvg5EyPYmVEmUJVFNH.3CHWoonozybwVUopVTwkWvobaVD5WfQdfiNoyjew9aBw@6LdVTJhRfJKsrUtnjFqE3TpEbCYs3VZoxmaoNFqRWn4x"
-	sendRequest, err := json.Marshal(map[string]interface{}{
-		"type":          "send",
-		"recipient":     rec,
-		"message":       message,
-		"withReplySurb": true,
-	})
+	readData, err := ioutil.ReadFile("file_example_PNG_2500kB.jpg")
 	if err != nil {
 		panic(err)
 	}
 
-	fmt.Printf("sending '%v' (*with* reply SURB) over the mix network...\n", message)
-	if err = conn.WriteMessage(websocket.TextMessage, []byte(sendRequest)); err != nil {
+	sendRequest := nL.MakeSendRequest([]byte(rec), readData, true)
+	fmt.Printf("sending content of 'file_example_PNG_2500KB.jpg' over the mix network...\n")
+	if err = conn.WriteMessage(websocket.BinaryMessage, sendRequest); err != nil {
 		panic(err)
 	}
 }

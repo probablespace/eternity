@@ -2,6 +2,7 @@ package nymLib
 
 import (
 	"fmt"
+	"io/ioutil"
 
 	"github.com/gorilla/websocket"
 )
@@ -34,9 +35,10 @@ func CheckComm() {
 			panic(err)
 		}
 
-		receivedMessage, _ := ParseReceived(receivedResponse)
+		fileData, _ := ParseReceived(receivedResponse)
 
-		fmt.Printf("received %v from the mix network!\n", string(receivedMessage))
+		fmt.Printf("writing the file back to the disk!\n")
+		ioutil.WriteFile("received_file_withreply", fileData, 0644)
 	}
 
 }

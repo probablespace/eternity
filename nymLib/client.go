@@ -29,7 +29,7 @@ func parseSelfAddressResponse(rawResponse []byte) []byte {
 	return rawResponse[1:]
 }
 
-func makeSendRequest(recipient []byte, message []byte, withReplySurb bool) []byte {
+func MakeSendRequest(recipient []byte, message []byte, withReplySurb bool) []byte {
 	messageLen := make([]byte, 8)
 	binary.BigEndian.PutUint64(messageLen, uint64(len(message)))
 
@@ -129,7 +129,7 @@ func SendBinaryWithoutReply() {
 		panic(err)
 	}
 
-	sendRequest := makeSendRequest(selfAddress, readData, false)
+	sendRequest := MakeSendRequest(selfAddress, readData, false)
 	fmt.Printf("sending content of 'dummy file' over the mix network...\n")
 	if err = conn.WriteMessage(websocket.BinaryMessage, sendRequest); err != nil {
 		panic(err)
@@ -173,43 +173,43 @@ func SendBinaryWithReply(recipient string) {
 		panic(err)
 	}
 
-	sendRequest := makeSendRequest(selfAddress, readData, true)
+	sendRequest := MakeSendRequest(selfAddress, readData, true)
 	fmt.Printf("sending content of 'file_example_PNG_2500KB.jpg' over the mix network...\n")
 	if err = conn.WriteMessage(websocket.BinaryMessage, sendRequest); err != nil {
 		panic(err)
 	}
 
-	fmt.Printf("waiting to receive a message from the mix network...\n")
-	_, receivedResponse, err = conn.ReadMessage()
-	if err != nil {
-		panic(err)
-	}
+	// fmt.Printf("waiting to receive a message from the mix network...\n")
+	// _, receivedResponse, err = conn.ReadMessage()
+	// if err != nil {
+	// 	panic(err)
+	// }
 
-	fileData, replySURB := ParseReceived(receivedResponse)
+	// fileData, replySURB := ParseReceived(receivedResponse)
 
-	fmt.Printf("writing the file back to the disk!\n")
-	ioutil.WriteFile("received_file_withreply", fileData, 0644)
+	// fmt.Printf("writing the file back to the disk!\n")
+	// ioutil.WriteFile("received_file_withreply", fileData, 0644)
 
-	replyMessage := []byte("hello from reply SURB! - thanks for sending me the file!")
-	replyRequest := MakeReplyRequest(replyMessage, replySURB)
+	// replyMessage := []byte("hello from reply SURB! - thanks for sending me the file!")
+	// replyRequest := MakeReplyRequest(replyMessage, replySURB)
 
-	fmt.Printf("sending '%v' (using reply SURB) over the mix network...\n", string(replyMessage))
-	if err = conn.WriteMessage(websocket.BinaryMessage, replyRequest); err != nil {
-		panic(err)
-	}
+	// fmt.Printf("sending '%v' (using reply SURB) over the mix network...\n", string(replyMessage))
+	// if err = conn.WriteMessage(websocket.BinaryMessage, replyRequest); err != nil {
+	// 	panic(err)
+	// }
 
-	fmt.Printf("waiting to receive a message from the mix network...\n")
-	_, receivedResponse, err = conn.ReadMessage()
-	if err != nil {
-		panic(err)
-	}
+	// fmt.Printf("waiting to receive a message from the mix network...\n")
+	// _, receivedResponse, err = conn.ReadMessage()
+	// if err != nil {
+	// 	panic(err)
+	// }
 
-	receivedMessage, replySURB := ParseReceived(receivedResponse)
-	if replySURB != nil {
-		panic("did not expect a replySURB!")
-	}
+	// receivedMessage, replySURB := ParseReceived(receivedResponse)
+	// if replySURB != nil {
+	// 	panic("did not expect a replySURB!")
+	// }
 
-	fmt.Printf("received %v from the mix network!\n", string(receivedMessage))
+	// fmt.Printf("received %v from the mix network!\n", string(receivedMessage))
 
 }
 
