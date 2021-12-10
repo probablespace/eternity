@@ -4,7 +4,6 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 
 	"github.com/gorilla/websocket"
 )
@@ -17,6 +16,12 @@ const selfAddressRequestTag = 0x02
 const errorResponseTag = 0x00
 const receivedResponseTag = 0x01
 const selfAddressResponseTag = 0x02
+
+type InvalidRequestError struct{}
+
+func (m *InvalidRequestError) Error() string {
+	return "malformed or invalid request"
+}
 
 func MakeSelfAddressRequest() []byte {
 	return []byte{selfAddressRequestTag}
@@ -48,23 +53,7 @@ func MakeSendRequest(recipient []byte, message []byte, withReplySurb bool) []byt
 	return out
 }
 
-func MakeReplyRequest(message []byte, replySURB []byte) []byte {
-	messageLen := make([]byte, 8)
-	binary.BigEndian.PutUint64(messageLen, uint64(len(message)))
-
-	surbLen := make([]byte, 8)
-	binary.BigEndian.PutUint64(surbLen, uint64(len(replySURB)))
-
-	out := []byte{replyRequestTag}
-	out = append(out, surbLen...)
-	out = append(out, replySURB...)
-	out = append(out, messageLen...)
-	out = append(out, message...)
-
-	return out
-}
-
-func ParseReceived(rawResponse []byte) ([]byte, []byte) {
+func ParseReceived(rawResponse []byte) (ServerRequest, error) {
 	if rawResponse[0] != receivedResponseTag {
 		panic("Received invalid response!")
 	}
@@ -91,126 +80,37 @@ func ParseReceived(rawResponse []byte) ([]byte, []byte) {
 		}
 
 		msg := other[surbLen+8:]
-		return msg, surb
-	} else {
-		msgLen := binary.BigEndian.Uint64(data[:8])
-		other := data[8:]
+		actionByte := msg[0]
+		SR := &ServerRequest{
+			SURB: surb,
+		}
+		msg = msg[1:]
+		switch actionByte {
+		case 0x00: // search
+		case 0x01: // store
+			// pubByte := msg[0] // if the pubByte = 0, this is a public file
+			msg = msg[1:]
+			publicKey := msg[:32] // 32 byte ED25519 public key
+			fileSig := msg[32:96] // 64 byte ED25519 signature of file
+			fileBody := msg[96:]  // file body
 
-		if len(other) != int(msgLen) {
-			panic("invalid msg len")
+			SR.Action = actionByte
+			SR.FileSig = fileSig
+			SR.PubKey = publicKey
+			SR.Body = fileBody
+		case 0x02: // serve
+		case 0x03: // delete
+		}
+		var clientRequest RawRequest
+		err := json.Unmarshal(msg, clientRequest)
+		if err != nil {
+
 		}
 
-		msg := other[:msgLen]
-		return msg, nil
+		return *SR, nil
+	} else {
+		return ServerRequest{}, &InvalidRequestError{}
 	}
-}
-
-func SendBinaryWithoutReply() {
-	uri := "ws://localhost:1977"
-
-	conn, _, err := websocket.DefaultDialer.Dial(uri, nil)
-	if err != nil {
-		panic(err)
-	}
-	defer conn.Close()
-
-	selfAddressRequest := MakeSelfAddressRequest()
-	if err = conn.WriteMessage(websocket.BinaryMessage, selfAddressRequest); err != nil {
-		panic(err)
-	}
-	_, receivedResponse, err := conn.ReadMessage()
-	if err != nil {
-		panic(err)
-	}
-	selfAddress := parseSelfAddressResponse(receivedResponse)
-
-	readData, err := ioutil.ReadFile("dummy_file")
-	if err != nil {
-		panic(err)
-	}
-
-	sendRequest := MakeSendRequest(selfAddress, readData, false)
-	fmt.Printf("sending content of 'dummy file' over the mix network...\n")
-	if err = conn.WriteMessage(websocket.BinaryMessage, sendRequest); err != nil {
-		panic(err)
-	}
-
-	fmt.Printf("waiting to receive a message from the mix network...\n")
-	_, receivedResponse, err = conn.ReadMessage()
-	if err != nil {
-		panic(err)
-	}
-
-	fileData, replySURB := ParseReceived(receivedResponse)
-	if replySURB != nil {
-		panic("did not expect a replySURB!")
-	}
-	fmt.Printf("writing the file back to the disk!\n")
-	ioutil.WriteFile("received_file_no_reply", fileData, 0644)
-}
-
-func SendBinaryWithReply(recipient string) {
-	uri := "ws://localhost:1977"
-
-	conn, _, err := websocket.DefaultDialer.Dial(uri, nil)
-	if err != nil {
-		panic(err)
-	}
-	defer conn.Close()
-
-	selfAddressRequest := MakeSelfAddressRequest()
-	if err = conn.WriteMessage(websocket.BinaryMessage, selfAddressRequest); err != nil {
-		panic(err)
-	}
-	_, receivedResponse, err := conn.ReadMessage()
-	if err != nil {
-		panic(err)
-	}
-	selfAddress := parseSelfAddressResponse(receivedResponse)
-
-	readData, err := ioutil.ReadFile("file_example_PNG_2500kB.jpg")
-	if err != nil {
-		panic(err)
-	}
-
-	sendRequest := MakeSendRequest(selfAddress, readData, true)
-	fmt.Printf("sending content of 'file_example_PNG_2500KB.jpg' over the mix network...\n")
-	if err = conn.WriteMessage(websocket.BinaryMessage, sendRequest); err != nil {
-		panic(err)
-	}
-
-	// fmt.Printf("waiting to receive a message from the mix network...\n")
-	// _, receivedResponse, err = conn.ReadMessage()
-	// if err != nil {
-	// 	panic(err)
-	// }
-
-	// fileData, replySURB := ParseReceived(receivedResponse)
-
-	// fmt.Printf("writing the file back to the disk!\n")
-	// ioutil.WriteFile("received_file_withreply", fileData, 0644)
-
-	// replyMessage := []byte("hello from reply SURB! - thanks for sending me the file!")
-	// replyRequest := MakeReplyRequest(replyMessage, replySURB)
-
-	// fmt.Printf("sending '%v' (using reply SURB) over the mix network...\n", string(replyMessage))
-	// if err = conn.WriteMessage(websocket.BinaryMessage, replyRequest); err != nil {
-	// 	panic(err)
-	// }
-
-	// fmt.Printf("waiting to receive a message from the mix network...\n")
-	// _, receivedResponse, err = conn.ReadMessage()
-	// if err != nil {
-	// 	panic(err)
-	// }
-
-	// receivedMessage, replySURB := ParseReceived(receivedResponse)
-	// if replySURB != nil {
-	// 	panic("did not expect a replySURB!")
-	// }
-
-	// fmt.Printf("received %v from the mix network!\n", string(receivedMessage))
-
 }
 
 func GetSelfAddress(conn *websocket.Conn) string {
@@ -262,72 +162,6 @@ func SendTextWithoutReply() {
 
 	fmt.Printf("waiting to receive a message from the mix network...\n")
 	_, receivedMessage, err := conn.ReadMessage()
-	if err != nil {
-		panic(err)
-	}
-	fmt.Printf("received %v from the mix network!\n", string(receivedMessage))
-}
-
-func SendTextWithReply() {
-	message := "Hello Nym!"
-
-	uri := "ws://localhost:1977"
-
-	conn, _, err := websocket.DefaultDialer.Dial(uri, nil)
-	if err != nil {
-		panic(err)
-	}
-	defer conn.Close()
-
-	selfAddress := GetSelfAddress(conn)
-	fmt.Printf("our address is: %v\n", selfAddress)
-	sendRequest, err := json.Marshal(map[string]interface{}{
-		"type":          "send",
-		"recipient":     selfAddress,
-		"message":       message,
-		"withReplySurb": true,
-	})
-	if err != nil {
-		panic(err)
-	}
-
-	fmt.Printf("sending '%v' (*with* reply SURB) over the mix network...\n", message)
-	if err = conn.WriteMessage(websocket.TextMessage, []byte(sendRequest)); err != nil {
-		panic(err)
-	}
-
-	fmt.Printf("waiting to receive a message from the mix network...\n")
-	_, receivedMessage, err := conn.ReadMessage()
-	if err != nil {
-		panic(err)
-	}
-	fmt.Printf("received %v from the mix network!\n", string(receivedMessage))
-
-	receivedMessageJSON := make(map[string]interface{})
-	if err := json.Unmarshal(receivedMessage, &receivedMessageJSON); err != nil {
-		panic(err)
-	}
-
-	// use the received surb to send an anonymous reply!
-	replySurb := receivedMessageJSON["replySurb"]
-	replyMessage := "hello from reply SURB!"
-
-	reply, err := json.Marshal(map[string]interface{}{
-		"type":      "reply",
-		"message":   replyMessage,
-		"replySurb": replySurb,
-	})
-	if err != nil {
-		panic(err)
-	}
-
-	fmt.Printf("sending '%v' (using reply SURB) over the mix network...\n", replyMessage)
-	if err = conn.WriteMessage(websocket.TextMessage, []byte(reply)); err != nil {
-		panic(err)
-	}
-
-	fmt.Printf("waiting to receive a message from the mix network...\n")
-	_, receivedMessage, err = conn.ReadMessage()
 	if err != nil {
 		panic(err)
 	}

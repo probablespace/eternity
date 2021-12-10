@@ -3,7 +3,7 @@ package eternityFS
 import (
 	"bytes"
 	"crypto/sha256"
-	"encoding/hex"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -16,7 +16,11 @@ type HashTable struct{}
 
 type FileIndexEntry struct {
 	Path string `json:"path"`
-	Hash string `json:"hash"`
+	Hash string `json:"hash"` // base64 encoded sha546 hash
+
+	// these are used to validate delete options
+	PublicKey string `json:"pubkey"`    // base64 encoded []byte
+	Signature string `json:"signature"` // base64 encoded []byte
 }
 
 type efsOpts struct {
@@ -26,8 +30,8 @@ type efsOpts struct {
 }
 
 type EternityFS struct {
-	Opts    efsOpts           `json:"opts"`
-	FileMap map[string]string `json:"filemap"`
+	Opts    efsOpts                   `json:"opts"`
+	FileMap map[string]FileIndexEntry `json:"filemap"`
 }
 
 func makeConfig(dir string) EternityFS {
@@ -39,7 +43,7 @@ func makeConfig(dir string) EternityFS {
 	}
 	defaultConfig := &EternityFS{
 		Opts:    *defaultOpts,
-		FileMap: make(map[string]string),
+		FileMap: make(map[string]FileIndexEntry),
 	}
 	file, err := json.Marshal(defaultConfig)
 	if err != nil {
@@ -105,11 +109,12 @@ func (e *FileNotFoundError) Error() string {
 }
 
 func (efs EternityFS) GetFile(hash string) ([]byte, error) {
-	filepath, ok := efs.FileMap[hash]
+	fileIndex, ok := efs.FileMap[hash]
 	if !ok {
 		// file does not exist
 		return make([]byte, 0), &FileNotFoundError{}
 	}
+	filepath := fileIndex.Path
 	file, err := ioutil.ReadFile(filepath)
 	if err != nil {
 		return make([]byte, 0), err
@@ -117,7 +122,14 @@ func (efs EternityFS) GetFile(hash string) ([]byte, error) {
 	return file, nil
 }
 
-func (efs EternityFS) Store(file []byte) (string, error) {
+func (efs EternityFS) Search(hash string) bool {
+	if _, ok := efs.FileMap[hash]; ok {
+		return true
+	}
+	return false
+}
+
+func (efs EternityFS) Store(file []byte, publicKey []byte, sig []byte) (string, error) {
 	r := bytes.NewReader(file)
 	h := sha256.New()
 
@@ -125,14 +137,19 @@ func (efs EternityFS) Store(file []byte) (string, error) {
 		return "", err
 	}
 
-	fileHash := hex.EncodeToString(h.Sum(nil))
+	fileHash := base64.StdEncoding.EncodeToString(h.Sum(nil))
 	filepath := efs.Opts.Dir + "/" + string(fileHash)
 	println("storing file with hash: ", string(fileHash), " at ", efs.Opts.FileDir+"/"+string(fileHash))
 	err := ioutil.WriteFile(efs.Opts.FileDir+"/"+string(fileHash), file, os.ModePerm)
 	if err != nil {
 		return "", err
 	}
-	efs.FileMap[string(fileHash)] = filepath
+	efs.FileMap[string(fileHash)] = FileIndexEntry{
+		Path:      filepath,
+		Hash:      fileHash,
+		PublicKey: base64.StdEncoding.EncodeToString(publicKey),
+		Signature: base64.StdEncoding.EncodeToString(sig),
+	}
 
 	efs.SaveConfig()
 
@@ -151,7 +168,7 @@ func checkFileHash(hash string, path string) (bool, error) {
 	if _, err := io.Copy(h, r); err != nil {
 		return false, err
 	}
-	tempHash := hex.EncodeToString(h.Sum(nil))
+	tempHash := base64.StdEncoding.EncodeToString(h.Sum(nil))
 	if hash != tempHash {
 		return false, nil
 	}
@@ -167,7 +184,8 @@ func (efs EternityFS) IndexFiles(dir string) error {
 		return err
 	}
 
-	for hash, path := range efs.FileMap {
+	for hash, entry := range efs.FileMap {
+		path := entry.Path
 		if _, err := os.Stat(path); errors.Is(err, os.ErrNotExist) {
 			delete(efs.FileMap, hash)
 		} else {
@@ -211,7 +229,10 @@ func (efs EternityFS) IndexFiles(dir string) error {
 				println("hash matches file")
 				// add file to hash map if its name and hash match
 				if _, ok := efs.FileMap[item.Name()]; !ok {
-					efs.FileMap[item.Name()] = path
+					efs.FileMap[item.Name()] = FileIndexEntry{
+						Path: path,
+						Hash: item.Name(),
+					}
 					efs.SaveConfig()
 				}
 			}
